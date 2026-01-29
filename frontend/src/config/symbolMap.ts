@@ -1,0 +1,20 @@
+export const symbolMap = {
+  stooq: {
+    AAPL: 'aapl.us',
+    MSFT: 'msft.us',
+    NVDA: 'nvda.us',
+    AMZN: 'amzn.us',
+    META: 'meta.us',
+    GOOGL: 'googl.us',
+    TSLA: 'tsla.us',
+    'BRK.B': 'brk-b.us',
+    JPM: 'jpm.us',
+    XOM: 'xom.us',
+    UNH: 'unh.us',
+    V: 'v.us',
+    MA: 'ma.us',
+    GLD: 'gld.us',
+    SLV: 'slv.us',
+    ASML: 'asml.us',
+  },
+}

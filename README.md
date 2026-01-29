@@ -1,34 +1,67 @@
 # Market Analyzer
 
-Local dashboard that scores popular stocks and commodities over the last ~21 trading days and explains the signal reasons.
+Local personal investing workstation with a Flask backend and Vue 3 frontend. It combines daily market signals, chart analysis, and a lightweight portfolio tracker with automatic price lookup.
 
-## Setup
+Core pages:
+- **Home**: daily snapshot + watchlist signals, provider freshness, and quota status
+- **Analyze**: interactive charting with indicators, drawings, and signal overlays
+- **Portfolio**: fast “3-field BUY” flow (symbol + date + money spent) with auto price/qty + WAC positions
+- **Simulation**: placeholder for what‑if scenarios
 
-1) Create a virtualenv and install deps:
+## Fresh machine setup (macOS / Linux)
+
+```bash
+git clone <your-repo>
+cd MarketAnalyzer/frontend
+npm install
+npm run dev
+```
+
+That will:
+- create a Python virtualenv in `../.venv`
+- install backend deps from `backend/requirements.txt`
+- start Flask + Vite together
+
+Open:
+- Frontend: http://127.0.0.1:5173
+- Backend: http://127.0.0.1:5000
+
+## Highlights
+
+- **Data providers**: Stooq daily candles (primary), Alpha Vantage fallback (quota-limited), FRED commodities
+- **Caching**: daily refresh with provider-specific TTLs, cache hit metrics, and stale fallback
+- **Signals**: 30‑day return, 30‑day volatility, 3‑month drawdown, MA20 slope with explainable contributions
+- **Charts**: lightweight-charts with SMA/EMA/BB overlays + RSI/MACD/Volume panels and drawing tools
+- **Portfolio**: auto fee calculation, auto quantity, WAC cost basis, and equity curve
+
+## AI usage note
+
+Development of this project used AI assistance for planning, coding, and refactoring.
+
+## Backend (Flask) only
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-2) Add API keys (optional but recommended):
-
-```bash
+pip install -r backend/requirements.txt
 cp .env.example .env
+python backend/run.py
 ```
 
-Fill in `ALPHA_VANTAGE_KEY` (stocks) and `FRED_API_KEY` (commodities) in `.env`.
-
-3) Run the server:
+## Frontend (Vue) only
 
 ```bash
-python run.py
+cd frontend
+npm install
+npm run dev
 ```
 
-Open http://127.0.0.1:5000
+The frontend expects an `/api/assets` endpoint from Flask and proxies through Vite during dev.
 
 ## Customize
 
-- Edit the universe in `app/config.py` (tickers or FRED series IDs).
-- Adjust scoring rules in `app/analysis.py`.
+- Universe list: `backend/app/config.py`
+- Scoring rules: `backend/app/analysis.py`
+- Provider budgets + refresh rules: `backend/app/usage.py`, `backend/app/asset_manager.py`
+- Frontend settings (fees, precision): `frontend/src/stores/settings.js`
+- Portfolio logic: `frontend/src/stores/portfolio.js`, `frontend/src/pages/Portfolio.vue`

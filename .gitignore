@@ -28,6 +28,8 @@ dist/
 build/
 *.egg-info/
 *.egg
+frontend/dist/
+frontend/node_modules/
 
 # Testing
 .pytest_cache/
@@ -37,10 +39,12 @@ htmlcov/
 .hypothesis/
 
 # Data and cache files
-data/cache.json
+backend/data/cache.json
+backend/data/watchlist.json
 
 # Logs
 *.log
 
 # Jupyter Notebook
 .ipynb_checkpoints
+

@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Market Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --ink: #0f1c2e;
+      --muted: #667085;
+      --bg: #f5f2ea;
+      --card: #ffffff;
+      --accent: #cb6d51;
+      --accent-2: #4a7c89;
+      --good: #1f8a70;
+      --bad: #b03a2e;
+      --neutral: #6c757d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 10%, #fdf8ef 0, #f5f2ea 35%, #efe8dd 100%);
+    }
+    header {
+      padding: 32px 28px 12px;
+    }
+    h1 {
+      font-family: "Libre Baskerville", serif;
+      font-weight: 700;
+      margin: 0 0 6px;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+    }
+    .wrap {
+      padding: 0 28px 32px;
+      display: grid;
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .panel {
+      background: var(--card);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 24px rgba(15, 28, 46, 0.08);
+    }
+    .panel h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .row {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: minmax(520px, 1fr) 340px;
+      align-items: start;
+    }
+    .row.expanded {
+      grid-template-columns: minmax(420px, 1fr) 600px;
+    }
+    .asset-select {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .asset-select label {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    select {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #e3e6eb;
+      font-size: 14px;
+      background: #fff;
+    }
+    .search-input {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #e3e6eb;
+      font-size: 14px;
+      width: 100%;
+    }
+    .btn {
+      border: none;
+      background: var(--accent);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn.secondary { background: var(--accent-2); }
+    .btn.icon { padding: 6px 10px; font-size: 12px; }
+    .btn.ghost {
+      background: transparent;
+      color: var(--bad);
+      border: 1px solid rgba(176, 58, 46, 0.35);
+      padding: 6px 10px;
+      font-weight: 600;
+    }
+    #chart { height: 380px; }
+    .chart-footer {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      background: #f7f5f0;
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .stat strong {
+      display: block;
+      font-size: 16px;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .signals-panel {
+      display: grid;
+      gap: 12px;
+    }
+    .signals-toolbar {
+      display: grid;
+      gap: 10px;
+    }
+    .toolbar-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .toolbar-inline {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .toolbar-note {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .signals-list {
+      display: grid;
+      gap: 8px;
+      max-height: 520px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .signals-group {
+      border: 1px solid #f0eee8;
+      border-radius: 14px;
+      padding: 12px;
+      background: #fbfaf7;
+    }
+    .signals-group h3 {
+      margin: 0 0 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+    }
+    .signals-row {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr;
+      gap: 8px;
+      padding: 8px 6px;
+      border-bottom: 1px dashed #ede9df;
+      font-size: 13px;
+      align-items: center;
+      cursor: pointer;
+    }
+    .signals-row:last-child { border-bottom: none; }
+    .signals-row.active {
+      background: #fff7ea;
+      border-radius: 10px;
+      border-bottom: none;
+    }
+    .signals-row .name { font-weight: 600; }
+    .signals-row .return { text-align: right; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #eceff3;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    th button {
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 0;
+    }
+    .sort-indicator { font-size: 10px; color: var(--muted); }
+    .pill {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .bullish { background: rgba(31, 138, 112, 0.15); color: var(--good); }
+    .bearish { background: rgba(176, 58, 46, 0.15); color: var(--bad); }
+    .neutral { background: rgba(108, 117, 125, 0.15); color: var(--neutral); }
+    .reasons { color: var(--muted); }
+    .disclaimer {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .errors {
+      background: #fff2f2;
+      border: 1px solid #f5c6cb;
+      color: #7a1d1d;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 24px rgba(15, 28, 46, 0.08);
+    }
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+    .card .value {
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 900px) {
+      .row { grid-template-columns: 1fr; }
+      .row.expanded { grid-template-columns: 1fr; }
+      #chart { height: 320px; }
+      .toolbar-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Personal Market Analyzer</h1>
+    <p class="subtitle">Signals for the last month, with transparent reasons. Not financial advice.</p>
+  </header>
+
+  <div class="wrap">
+    {% if errors %}
+    <div class="errors">
+      <strong>Data warnings:</strong>
+      <ul>
+        {% for e in errors %}
+        <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% raw %}
+    <section class="row" :class="{ expanded: isExpanded }" id="main-row">
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Chart</h2>
+          <div class="asset-select">
+            <label for="asset-select">Asset</label>
+            <select id="asset-select" v-model.number="selectedIndex" @change="selectFromDropdown">
+              <option v-for="(asset, idx) in assets" :key="asset.symbol + idx" :value="idx">
+                {{ asset.name }} ({{ asset.type }})
+              </option>
+            </select>
+          </div>
+        </div>
+        <div id="chart"></div>
+        <div class="chart-footer">
+          <div class="stat">
+            <strong>{{ formatPercent(selectedAsset.features.ret_30d) }}</strong>
+            Return (30D)
+          </div>
+          <div class="stat">
+            <strong>{{ formatPercent(selectedAsset.features.vol_30d) }}</strong>
+            Vol (30D)
+          </div>
+          <div class="stat">
+            <strong>{{ formatPercent(selectedAsset.features.drawdown_3m) }}</strong>
+            Drawdown (3M)
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Signals & Features</h2>
+          <button class="btn icon secondary" @click="togglePanel">{{ isExpanded ? 'Collapse' : 'Expand' }}</button>
+        </div>
+        <div class="signals-panel">
+          <div class="signals-toolbar">
+            <input id="panel-search" class="search-input" type="text" placeholder="Search assets..." v-model="panelFilter" />
+            <div class="toolbar-row">
+              <div class="toolbar-inline">
+                <input id="add-input" class="search-input" type="text" placeholder="Add symbol (e.g. NFLX)" v-model="addSymbolValue" />
+                <button class="btn" @click="addSymbol">Add</button>
+              </div>
+              <div class="toolbar-inline">
+                <select id="sort-select" v-model="groupSortKey">
+                  <option value="name">Sort: Name</option>
+                  <option value="label">Sort: Signal</option>
+                  <option value="ret_30d">Sort: Return (30D)</option>
+                </select>
+                <div class="toolbar-note">Grouped by type</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="!isExpanded" id="signals-list" class="signals-list">
+            <div v-for="(groupAssets, group) in groupedAssets" :key="group" class="signals-group">
+              <h3>{{ group }}</h3>
+              <div v-for="item in groupAssets" :key="item.asset.symbol + item.idx" class="signals-row" :class="{ active: item.idx === selectedIndex }" @click="selectFromPanel(item.idx)">
+                <div class="name">{{ item.asset.name }}</div>
+                <div><span class="pill" :class="item.asset.label">{{ item.asset.label }}</span></div>
+                <div class="return">{{ formatPercent(item.asset.features.ret_30d) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else id="signals-expanded">
+            <table>
+              <thead>
+                <tr>
+                  <th><button data-key="name" @click="setSort('name')">Asset <span class="sort-indicator">↕</span></button></th>
+                  <th><button data-key="type" @click="setSort('type')">Type <span class="sort-indicator">↕</span></button></th>
+                  <th><button data-key="label" @click="setSort('label')">Signal <span class="sort-indicator">↕</span></button></th>
+                  <th><button data-key="ret_30d" @click="setSort('ret_30d')">Return (30D) <span class="sort-indicator">↕</span></button></th>
+                  <th><button data-key="vol_30d" @click="setSort('vol_30d')">Vol (30D) <span class="sort-indicator">↕</span></button></th>
+                  <th><button data-key="drawdown_3m" @click="setSort('drawdown_3m')">Drawdown (3M) <span class="sort-indicator">↕</span></button></th>
+                  <th>Reasons</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="asset in sortedTable" :key="asset.symbol + asset.type">
+                  <td>{{ asset.name }}</td>
+                  <td>{{ asset.type }}</td>
+                  <td><span class="pill" :class="asset.label">{{ asset.label }}</span></td>
+                  <td>{{ formatPercent(asset.features.ret_30d) }}</td>
+                  <td>{{ formatPercent(asset.features.vol_30d) }}</td>
+                  <td>{{ formatPercent(asset.features.drawdown_3m) }}</td>
+                  <td class="reasons">{{ asset.reasons.length ? asset.reasons.join('; ') : 'No strong signal' }}</td>
+                  <td>
+                    <button v-if="asset.type === 'stock'" class="btn ghost" @click="removeSymbol(asset.symbol)">Remove</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="disclaimer">
+              This dashboard provides signal labels based on simple technical rules for the last ~30 trading days.
+              It is for personal experimentation only and does not provide investment advice.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cards">
+      <div class="card">
+        <h3>Total Assets</h3>
+        <div class="value">{{ assets.length }}</div>
+      </div>
+      <div class="card">
+        <h3>Bullish</h3>
+        <div class="value">{{ counts.bullish || 0 }}</div>
+      </div>
+      <div class="card">
+        <h3>Neutral</h3>
+        <div class="value">{{ counts.neutral || 0 }}</div>
+      </div>
+      <div class="card">
+        <h3>Bearish</h3>
+        <div class="value">{{ counts.bearish || 0 }}</div>
+      </div>
+    </section>
+    {% endraw %}
+  </div>
+
+  <script>
+    window.__ASSETS__ = {{ assets_json | safe }};
+  </script>
+  <script>
+    const assets = window.__ASSETS__ || [];
+
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          assets,
+          selectedIndex: 0,
+          panelFilter: "",
+          addSymbolValue: "",
+          isExpanded: false,
+          groupSortKey: "name",
+          tableSortKey: "name",
+          tableSortDir: "asc",
+          chart: null,
+          candleSeries: null,
+          lineSeries: null,
+        };
+      },
+      computed: {
+        selectedAsset() {
+          return this.assets[this.selectedIndex] || this.assets[0] || { features: { ret_30d: 0, vol_30d: 0, drawdown_3m: 0 } };
+        },
+        counts() {
+          return this.assets.reduce((acc, a) => {
+            acc[a.label] = (acc[a.label] || 0) + 1;
+            return acc;
+          }, {});
+        },
+        filteredAssets() {
+          const filter = this.panelFilter.trim().toLowerCase();
+          if (!filter) return this.assets;
+          return this.assets.filter((a) => {
+            const text = `${a.name} ${a.symbol} ${a.type}`.toLowerCase();
+            return text.includes(filter);
+          });
+        },
+        groupedAssets() {
+          const groups = {};
+          const sortKey = this.groupSortKey;
+          this.filteredAssets.forEach((a, idx) => {
+            if (!groups[a.type]) groups[a.type] = [];
+            groups[a.type].push({ asset: a, idx: this.assets.indexOf(a) });
+          });
+          Object.keys(groups).forEach((key) => {
+            groups[key].sort((x, y) => {
+              const av = this.getSortValue(x.asset, sortKey);
+              const bv = this.getSortValue(y.asset, sortKey);
+              if (typeof av === "number" && typeof bv === "number") return av - bv;
+              return String(av).localeCompare(String(bv));
+            });
+          });
+          return groups;
+        },
+        sortedTable() {
+          const items = [...this.filteredAssets];
+          items.sort((a, b) => {
+            const av = this.getSortValue(a, this.tableSortKey);
+            const bv = this.getSortValue(b, this.tableSortKey);
+            if (typeof av === "number" && typeof bv === "number") {
+              return this.tableSortDir === "asc" ? av - bv : bv - av;
+            }
+            return this.tableSortDir === "asc"
+              ? String(av).localeCompare(String(bv))
+              : String(bv).localeCompare(String(av));
+          });
+          return items;
+        }
+      },
+      methods: {
+        getSortValue(asset, key) {
+          if (key === "name") return asset.name;
+          if (key === "type") return asset.type;
+          if (key === "label") return asset.label;
+          if (key === "ret_30d") return asset.features.ret_30d;
+          if (key === "vol_30d") return asset.features.vol_30d;
+          if (key === "drawdown_3m") return asset.features.drawdown_3m;
+          return "";
+        },
+        formatPercent(value) {
+          if (typeof value !== "number") return "--";
+          return `${(value * 100).toFixed(2)}%`;
+        },
+        selectFromDropdown() {
+          this.renderChart();
+        },
+        selectFromPanel(idx) {
+          this.selectedIndex = idx;
+          this.renderChart();
+        },
+        togglePanel() {
+          this.isExpanded = !this.isExpanded;
+          setTimeout(() => this.chart.timeScale().fitContent(), 150);
+        },
+        setSort(key) {
+          if (this.tableSortKey === key) {
+            this.tableSortDir = this.tableSortDir === "asc" ? "desc" : "asc";
+          } else {
+            this.tableSortKey = key;
+            this.tableSortDir = "asc";
+          }
+        },
+        async addSymbol() {
+          const symbol = this.addSymbolValue.trim();
+          if (!symbol) return;
+          await fetch("/api/watchlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol }),
+          });
+          location.reload();
+        },
+        async removeSymbol(symbol) {
+          await fetch(`/api/watchlist/${symbol}`, { method: "DELETE" });
+          location.reload();
+        },
+        renderChart() {
+          const asset = this.selectedAsset;
+          if (asset.ohlc) {
+            this.candleSeries.setData(asset.ohlc);
+            this.lineSeries.setData([]);
+          } else {
+            const lineData = asset.dates.map((d, i) => ({ time: d, value: asset.series[i] }));
+            this.lineSeries.setData(lineData);
+            this.candleSeries.setData([]);
+          }
+          this.chart.timeScale().fitContent();
+        }
+      },
+      mounted() {
+        const chartRoot = document.getElementById("chart");
+        this.chart = LightweightCharts.createChart(chartRoot, {
+          layout: { background: { color: "#ffffff" }, textColor: "#0f1c2e" },
+          grid: { vertLines: { color: "#edf0f4" }, horzLines: { color: "#edf0f4" } },
+          timeScale: { timeVisible: true, secondsVisible: false },
+          rightPriceScale: { borderColor: "#e3e6eb" },
+          crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        });
+        this.candleSeries = this.chart.addCandlestickSeries({
+          upColor: "#1f8a70",
+          downColor: "#b03a2e",
+          borderDownColor: "#b03a2e",
+          borderUpColor: "#1f8a70",
+          wickDownColor: "#b03a2e",
+          wickUpColor: "#1f8a70",
+        });
+        this.lineSeries = this.chart.addLineSeries({
+          color: "#cb6d51",
+          lineWidth: 2,
+        });
+        if (this.assets.length) {
+          this.selectedIndex = 0;
+          this.renderChart();
+        }
+      }
+    }).mount(".wrap");
+  </script>
+</body>
+</html>
