@@ -1,0 +1,619 @@
+================================================================================
+TODO - MarketAnalyzer Code Improvements
+================================================================================
+Generated: 2026-01-29
+Lines of Code: ~3,700 (Backend: Python/Flask, Frontend: Vue 3)
+
+This document contains prioritized improvement suggestions based on an extensive
+code review covering architecture, security, performance, code quality, testing,
+and features.
+
+================================================================================
+CRITICAL - Security & Bug Fixes (Do First)
+================================================================================
+
+[SECURITY-1] Input Validation - Missing Integer Conversion Error Handling
+  Location: backend/app/dashboard.py:195, 269
+  Severity: HIGH
+  Issue: chart_points parameter converted to int without try/catch. Malformed
+         input like "?chart_points=abc" causes unhandled ValueError, returning
+         500 instead of proper 400 Bad Request.
+  Fix: Wrap int() conversion in try/except and return 400 with error message.
+  Impact: Better error handling, security best practice.
+
+[SECURITY-2] Race Condition in File-Based Cache Operations
+  Location: backend/app/cache.py, asset_cache.py, usage.py, watchlist.py
+  Severity: MEDIUM-HIGH
+  Issue: All cache modules use read-modify-write pattern without locking:
+         1. Load entire JSON file
+         2. Modify dict in memory
+         3. Write entire JSON file
+         In multi-threaded Flask app (production WSGI), concurrent requests
+         can cause data loss. Two simultaneous cache writes can overwrite
+         each other.
+  Fix: 
+    Option 1: Add file locking (fcntl on Unix/Linux)
+    Option 2: Switch to thread-safe SQLite cache
+    Option 3: Use Redis for caching
+  Impact: Critical for production deployments with concurrent users.
+
+[SECURITY-3] API Keys in Environment Variables
+  Status: CURRENT PRACTICE - Good, but needs verification
+  Action: Audit .env.example to ensure no actual keys are committed.
+          Verify .gitignore excludes .env file.
+  Location: .env.example, .gitignore
+  ✓ Already handled correctly - .env in .gitignore, .env.example has placeholders
+
+[SECURITY-4] No Input Sanitization for User-Provided Symbols
+  Location: backend/app/dashboard.py (watchlist endpoints)
+  Severity: MEDIUM
+  Issue: User can add any symbol to watchlist without validation.
+         While not directly dangerous, could cause issues with external APIs
+         or file system operations (symbol used in cache filenames).
+  Fix: Add symbol validation regex (alphanumeric + dots/dashes only).
+       Limit watchlist size to prevent abuse.
+  Impact: Prevents potential file system issues and API abuse.
+
+[BUG-1] Missing Error Handling in FRED Data Fetch
+  Location: backend/app/data_sources.py (assumed to exist based on imports)
+  Action: Review fetch_fred_series() for proper error handling.
+          Currently errors are logged but not always gracefully handled.
+
+[BUG-2] No Maximum Watchlist Size Limit
+  Location: backend/app/watchlist.py
+  Issue: Users can add unlimited symbols, causing performance issues
+         and excessive API usage.
+  Fix: Add MAX_WATCHLIST_SIZE = 50 limit with user-friendly error message.
+
+================================================================================
+HIGH PRIORITY - Performance & Scalability
+================================================================================
+
+[PERF-1] Blocking Sleep Calls in Request Handlers
+  Location: backend/app/asset_manager.py:172, 210
+  Severity: HIGH
+  Issue: time.sleep() called during request handling:
+         - STOOQ_MIN_REQUEST_DELAY_SECONDS = 0.2s per request
+         - ALPHA_VANTAGE_MIN_REQUEST_INTERVAL = 1.1s per request
+         - wait_for_alpha_slot() can block up to 60 seconds
+         With 15 stocks, this adds 3+ seconds of blocking time per request.
+  Fix:
+    Option 1: Implement async/await with aiohttp
+    Option 2: Move data fetching to background tasks (Celery/RQ)
+    Option 3: Pre-warm cache on schedule, serve only from cache
+  Impact: Massive UX improvement, enables real-time updates.
+
+[PERF-2] No Database - All Data in JSON Files
+  Current: All caching and storage uses JSON files
+  Issue: JSON parsing on every request, no indexing, no query optimization
+  Fix: Migrate to SQLite (lightweight, no server needed) or PostgreSQL
+  Benefits:
+    - Atomic transactions (fixes race conditions)
+    - Better performance with indexes
+    - Complex queries for historical analysis
+    - Data integrity constraints
+  Files affected: cache.py, asset_cache.py, usage.py, watchlist.py
+
+[PERF-3] No Caching of Computed Indicators
+  Location: frontend/src/chart/* (indicator calculations)
+  Issue: Technical indicators (SMA, EMA, RSI, MACD, BB) recomputed on every
+         chart render, even when data hasn't changed.
+  Fix: Memoize/cache indicator calculations based on data hash.
+  Impact: Smoother chart interactions, lower CPU usage.
+
+[PERF-4] Large Payload Sizes
+  Location: backend/app/dashboard.py /api/assets endpoint
+  Issue: Returns full OHLC data for all assets on every request.
+         With 15 stocks × 120 points, this is ~50KB+ per request.
+  Fix:
+    - Implement incremental updates (only changed assets)
+    - Use compression (gzip)
+    - Separate endpoints for list vs. detail
+  Impact: Faster page loads, lower bandwidth usage.
+
+[PERF-5] No Response Caching
+  Location: All Flask endpoints
+  Issue: Every request hits Python code, even for identical requests.
+  Fix: Add Flask-Caching with Redis/Memcached backend.
+       Cache /api/assets for 5-10 minutes based on cache expiry.
+  Impact: 10-100x faster response times for cached requests.
+
+================================================================================
+MEDIUM PRIORITY - Code Quality & Maintainability
+================================================================================
+
+[CODE-1] Limited Test Coverage
+  Current: Only 1 test file (test_refresh_flow.py)
+  Missing:
+    - Unit tests for analysis.py (feature calculation, scoring)
+    - Unit tests for providers.py (data parsing, resampling)
+    - Integration tests for Flask endpoints
+    - Frontend component tests (Vue Test Utils)
+  Fix: Target 70%+ coverage for critical paths.
+  Priority: High for production use.
+
+[CODE-2] No Logging Framework
+  Current: No structured logging, only print statements and errors
+  Issue: Hard to debug production issues, no log levels, no log rotation
+  Fix: Implement Python logging module with:
+       - Different log levels (DEBUG, INFO, WARNING, ERROR)
+       - File rotation with RotatingFileHandler
+       - Structured JSON logging for parsing
+       - Request ID tracking for distributed tracing
+  Impact: Essential for production debugging.
+
+[CODE-3] Hard-Coded Configuration Values
+  Location: Multiple files (config.py, various components)
+  Issue: Magic numbers scattered throughout code:
+         - Analysis thresholds (0.03 for returns, 0.08 for drawdown)
+         - Chart point limits (1260, 520, 240)
+         - Cache TTLs
+  Fix: Centralize all config in config.py with comments explaining rationale.
+  Impact: Easier to tune behavior without code changes.
+
+[CODE-4] Inconsistent Error Handling Patterns
+  Location: Throughout backend
+  Issue: Some functions return (data, error), others raise exceptions,
+         others return None silently.
+  Fix: Standardize on one pattern:
+       Option 1: Always raise custom exceptions, handle at route level
+       Option 2: Always return Result/Either monad pattern
+  Impact: More predictable error handling, easier debugging.
+
+[CODE-5] No Type Hints in Frontend
+  Location: All .js files in frontend/src
+  Issue: JavaScript without TypeScript = no type safety
+  Fix: Migrate to TypeScript or add JSDoc type annotations
+  Benefits:
+    - Catch type errors at development time
+    - Better IDE autocomplete
+    - Self-documenting code
+  Effort: Medium (gradual migration possible)
+
+[CODE-6] Duplicate Code in Portfolio Store
+  Location: frontend/src/stores/portfolio.js
+  Issue: addTx/editTx and addBuySimple/editBuySimple are nearly identical
+  Fix: Consolidate into single add/edit functions, use type parameter
+  Impact: Less code to maintain, fewer bugs.
+
+[CODE-7] No API Versioning
+  Location: All /api/* endpoints
+  Issue: Breaking changes to API will break existing clients
+  Fix: Add /api/v1/ prefix to all endpoints, plan migration strategy
+  Impact: Future-proofs the API for breaking changes.
+
+[CODE-8] Missing Documentation for Complex Functions
+  Location: asset_manager.py, portfolio.js (WAC calculation)
+  Issue: Complex algorithms (cache expiry, WAC, equity curve) need more
+         detailed explanations with examples.
+  Fix: Add docstring examples showing input/output for key functions.
+  Impact: Easier onboarding, fewer bugs during modifications.
+
+================================================================================
+MEDIUM PRIORITY - Frontend UX & Features
+================================================================================
+
+[FEATURE-1] No Loading States
+  Location: All pages (Home.vue, Analyze.vue, Portfolio.vue)
+  Issue: No spinners or skeleton screens during data fetch.
+         Users see blank page or stale data without indication.
+  Fix: Add loading state indicators:
+       - Skeleton loaders for cards
+       - Spinner overlays during refresh
+       - Progress bars for multi-asset fetch
+  Impact: Better perceived performance.
+
+[FEATURE-2] No Error Recovery UI
+  Location: All pages
+  Issue: When API fails, errors shown in small banner, no retry button.
+  Fix: Add prominent error states with:
+       - Retry button
+       - Offline mode indicator
+       - Fallback to cached data with timestamp
+  Impact: Better UX during network issues.
+
+[FEATURE-3] No Keyboard Shortcuts
+  Issue: All interactions require mouse clicks
+  Fix: Add keyboard shortcuts:
+       - R = Refresh current page
+       - 1-4 = Navigate to Home/Analyze/Portfolio/Simulation
+       - ESC = Close modals/drawers
+       - ? = Show keyboard shortcuts help
+  Impact: Power user productivity.
+
+[FEATURE-4] No Dark Mode
+  Issue: Only light theme available, hard on eyes at night
+  Fix: Implement dark mode with:
+       - System preference detection
+       - Manual toggle in settings
+       - Persist user choice in localStorage
+  Impact: Popular user request, accessibility improvement.
+
+[FEATURE-5] Chart Export Missing
+  Location: frontend/src/components/panels/ChartPanel.vue
+  Issue: No way to export charts as images or download data as CSV
+  Fix: Add export buttons:
+       - PNG export for charts
+       - CSV export for OHLC data
+       - Share chart with URL parameters
+  Impact: Useful for reports and presentations.
+
+[FEATURE-6] No Portfolio Diversification Metrics
+  Location: frontend/src/pages/Portfolio.vue
+  Issue: Portfolio shows positions but no sector allocation, correlation,
+         or diversification metrics.
+  Fix: Add analytics panel showing:
+       - Sector breakdown (requires sector data)
+       - Position concentration (% of portfolio)
+       - Risk metrics (beta, sharpe ratio)
+  Impact: Better investment decision making.
+
+[FEATURE-7] No Transaction Import/Export
+  Location: Portfolio page
+  Issue: Manual entry only, no CSV import for existing portfolios
+  Fix: Add import/export functionality:
+       - Import from CSV (date, symbol, type, qty, price, fee)
+       - Export to CSV for backup
+       - Import from broker statements (more complex)
+  Impact: Essential for real-world usage with existing portfolios.
+
+[FEATURE-8] Limited Symbol Search
+  Current: User must know exact symbol, typing manually
+  Fix: Add symbol search with autocomplete:
+       - Search by company name (FRED or free API)
+       - Show suggestions as user types
+       - Display company name + exchange
+  Impact: Much better UX for adding symbols.
+
+================================================================================
+LOW PRIORITY - Nice to Have
+================================================================================
+
+[ENHANCE-1] No Price Alerts
+  Issue: No way to set price alerts or notifications
+  Fix: Add alert system:
+       - Price crosses threshold (above/below)
+       - Significant price movement (% change)
+       - Signal changes (bullish → neutral)
+       - Browser notifications or email
+  Complexity: Requires background worker or client-side polling.
+
+[ENHANCE-2] No Multi-Currency Support
+  Current: All prices shown in their native currency, no conversion
+  Issue: Hard to compare assets in different currencies
+  Fix: Add currency conversion using free exchange rate API.
+       Allow user to set base currency (USD, EUR, etc.)
+  Impact: International users benefit.
+
+[ENHANCE-3] No Backtesting Framework
+  Location: pages/Simulation.vue (currently placeholder)
+  Issue: No way to test strategies on historical data
+  Fix: Implement backtesting engine:
+       - Define entry/exit rules based on signals
+       - Run against historical data
+       - Show P&L curve, drawdown, win rate
+  Effort: HIGH - complex feature.
+
+[ENHANCE-4] No Social Features
+  Issue: No way to share watchlists or portfolios
+  Fix: Add sharing features:
+       - Share watchlist as read-only link
+       - Public portfolio tracking (opt-in)
+       - Social sentiment indicators
+  Complexity: Requires backend database and auth system.
+
+[ENHANCE-5] Mobile Responsiveness
+  Current: Works on mobile but not optimized
+  Fix: Improve mobile UX:
+       - Responsive chart sizing
+       - Touch-friendly controls
+       - Swipe gestures for navigation
+       - Mobile-first component variants
+  Impact: Better mobile experience.
+
+[ENHANCE-6] PWA Support
+  Issue: Not installable as Progressive Web App
+  Fix: Add PWA manifest and service worker:
+       - Offline chart viewing from cache
+       - Install to home screen
+       - Background sync for updates
+  Impact: App-like experience on mobile.
+
+[ENHANCE-7] Data Retention Policy
+  Current: All cache/usage data kept indefinitely
+  Issue: usage.json and cache files grow unbounded
+  Fix: Implement data retention:
+       - Clean up usage data older than 90 days
+       - Remove expired cache entries on startup
+       - Add admin endpoint for cache management
+  Impact: Prevents disk space issues.
+
+================================================================================
+INFRASTRUCTURE & DEVOPS
+================================================================================
+
+[INFRA-1] No CI/CD Pipeline
+  Issue: No automated testing, building, or deployment
+  Fix: Set up GitHub Actions workflows:
+       - Run tests on every PR
+       - Lint Python (flake8, black) and JavaScript (ESLint)
+       - Build and deploy to staging on merge
+       - Automated dependency updates (Dependabot)
+  Impact: Catch bugs earlier, faster deployments.
+
+[INFRA-2] No Docker Setup
+  Issue: Manual environment setup, hard to reproduce
+  Fix: Create Dockerfile and docker-compose.yml:
+       - Backend container (Python + Flask)
+       - Frontend container (Node + Vite)
+       - Redis container (for caching)
+       - One-command setup: docker-compose up
+  Impact: Easier onboarding, consistent environments.
+
+[INFRA-3] No Environment-Specific Configs
+  Current: Single .env file for all environments
+  Fix: Support multiple environments:
+       - .env.development (local dev)
+       - .env.staging (test deployment)
+       - .env.production (live)
+       - Environment detection in Flask app
+  Impact: Safer deployments, easier testing.
+
+[INFRA-4] No Monitoring/Observability
+  Issue: No metrics, no alerting, no dashboards
+  Fix: Add monitoring stack:
+       - Application metrics (request count, latency, errors)
+       - System metrics (CPU, memory, disk)
+       - API quota tracking dashboard
+       - Alerts for quota exhaustion, high error rate
+  Tools: Prometheus + Grafana or cloud service (Datadog, New Relic)
+  Impact: Essential for production operations.
+
+[INFRA-5] No Database Backups
+  Current: JSON files, no automated backups
+  Issue: Data loss risk (user deletes file, disk failure)
+  Fix: Implement backup strategy:
+       - Daily backups of data/ directory
+       - Retention policy (keep 30 days)
+       - Test restore procedure
+  Impact: Data safety, disaster recovery.
+
+[INFRA-6] No Rate Limiting on Endpoints
+  Issue: No protection against abuse or accidental DOS
+  Fix: Add rate limiting:
+       - flask-limiter middleware
+       - Limit /api/assets to 10 req/min per IP
+       - Limit /api/asset to 30 req/min per IP
+  Impact: API stability, fair usage.
+
+================================================================================
+DOCUMENTATION IMPROVEMENTS
+================================================================================
+
+[DOC-1] API Documentation Missing
+  Issue: No OpenAPI/Swagger docs for API endpoints
+  Fix: Add API documentation using:
+       - Flask-RESTX or Flask-Smorest for auto-generated docs
+       - OpenAPI 3.0 spec
+       - Interactive Swagger UI at /api/docs
+  Impact: Easier integration, better developer experience.
+
+[DOC-2] Architecture Diagram Missing
+  Issue: No visual representation of system architecture
+  Fix: Create diagrams showing:
+       - Component architecture (Frontend ↔ Backend ↔ APIs)
+       - Data flow diagram (cache, providers, analysis)
+       - Deployment architecture
+  Tools: draw.io, PlantUML, or Mermaid in README.md
+  Impact: Easier understanding for new contributors.
+
+[DOC-3] Contributing Guide Missing
+  Issue: No CONTRIBUTING.md file
+  Fix: Add guide with:
+       - How to set up development environment
+       - Code style guidelines
+       - How to run tests
+       - How to submit PRs
+       - Commit message conventions
+  Impact: Encourages contributions, improves code quality.
+
+[DOC-4] Changelog Not Maintained
+  Location: CHANGELOG.md exists but minimal
+  Fix: Maintain detailed changelog following Keep a Changelog format:
+       - Added, Changed, Deprecated, Removed, Fixed, Security sections
+       - Version numbers with dates
+       - Links to GitHub releases
+  Impact: Users know what changed between versions.
+
+[DOC-5] No User Guide
+  Issue: README is developer-focused, no user documentation
+  Fix: Add user guide wiki with:
+       - How to interpret signals
+       - How to customize watchlist
+       - How to use portfolio tracker
+       - How to configure settings
+       - Troubleshooting common issues
+  Impact: Better user onboarding.
+
+================================================================================
+CODE CLEANUP & REFACTORING
+================================================================================
+
+[REFACTOR-1] Split Large Components
+  Location: frontend/src/pages/Portfolio.vue (500+ lines)
+  Issue: Portfolio.vue handles BUY form, positions table, equity chart,
+         transactions list all in one file.
+  Fix: Split into smaller components:
+       - BuyForm.vue
+       - PositionsTable.vue
+       - TransactionsList.vue
+       - Keep Portfolio.vue as orchestrator
+  Impact: Better maintainability, easier testing.
+
+[REFACTOR-2] Extract Chart Configuration
+  Location: frontend/src/chart/ directory
+  Issue: Chart options and configurations scattered across components
+  Fix: Create chartConfig.js with:
+       - Default chart options
+       - Color schemes
+       - Indicator defaults
+       - Reusable chart factory functions
+  Impact: DRY principle, consistent chart styling.
+
+[REFACTOR-3] Consolidate Date Formatting
+  Issue: Date formatting logic duplicated across components
+  Fix: Create dateUtils.js with:
+       - formatDate(date, format)
+       - parseDate(string)
+       - getDateRange(start, end)
+       - Consistent timezone handling
+  Impact: Consistent date display, easier to change format.
+
+[REFACTOR-4] Backend Route Organization
+  Location: backend/app/dashboard.py (389 lines, all routes in one file)
+  Issue: All routes in single file, will grow unmaintainable
+  Fix: Use Flask Blueprints to organize routes:
+       - assets_bp (asset endpoints)
+       - watchlist_bp (watchlist CRUD)
+       - portfolio_bp (future portfolio API)
+  Impact: Better organization, easier to navigate.
+
+[REFACTOR-5] Remove Dead Code
+  Action: Search for:
+       - Unused imports
+       - Commented-out code
+       - Unused functions/variables
+  Tools: autoflake (Python), ESLint no-unused-vars (JavaScript)
+  Impact: Cleaner codebase, faster builds.
+
+================================================================================
+DEPENDENCY UPDATES & MAINTENANCE
+================================================================================
+
+[DEPS-1] Pin Exact Versions
+  Current: requirements.txt uses == (good) but package.json uses ^ (flexible)
+  Issue: ^ allows minor version updates, can break builds
+  Recommendation: 
+       - Keep == pinning in requirements.txt (good)
+       - Consider exact versions in package.json for consistency
+       - Use Dependabot for controlled updates
+  Impact: Reproducible builds.
+
+[DEPS-2] Security Audit
+  Action: Run security scanners:
+       - pip-audit for Python dependencies
+       - npm audit for JavaScript dependencies
+  Fix: Update any packages with known vulnerabilities
+  Frequency: Weekly or on every PR (via CI/CD)
+  Impact: Security compliance.
+
+[DEPS-3] Dependency Review
+  Current Dependencies:
+    Python: flask, pandas, requests, python-dotenv
+    JavaScript: vue, pinia, vue-router, lightweight-charts
+  Action: Review each dependency:
+       - Is it still maintained?
+       - Are there lighter alternatives?
+       - Can we reduce bundle size?
+  Candidates for review:
+       - pandas: Heavy library, mostly used for resampling
+         Could replace with lightweight time-series library
+  Impact: Smaller builds, fewer vulnerabilities.
+
+================================================================================
+ACCESSIBILITY (A11Y)
+================================================================================
+
+[A11Y-1] Missing ARIA Labels
+  Location: All interactive components
+  Issue: Screen readers can't navigate properly
+  Fix: Add ARIA labels to:
+       - Buttons (aria-label)
+       - Form inputs (aria-describedby)
+       - Dynamic content (aria-live)
+       - Navigation (aria-current)
+  Impact: Accessibility compliance, inclusive design.
+
+[A11Y-2] Color Contrast Issues
+  Action: Audit color contrast ratios (WCAG AA standard)
+  Tools: axe DevTools, Lighthouse accessibility score
+  Fix: Ensure 4.5:1 contrast ratio for normal text, 3:1 for large text
+  Impact: Better readability, legal compliance.
+
+[A11Y-3] Keyboard Navigation
+  Issue: Some components not fully keyboard accessible
+  Fix: Ensure all interactive elements:
+       - Focusable with Tab
+       - Activatable with Enter/Space
+       - Have visible focus indicators
+       - Support Escape to close modals
+  Impact: Accessibility for keyboard-only users.
+
+================================================================================
+PRIORITY MATRIX
+================================================================================
+
+Immediate (This Week):
+  1. [SECURITY-1] Input validation for chart_points
+  2. [BUG-2] Watchlist size limit
+  3. [CODE-1] Add basic tests for critical paths
+  4. [FEATURE-1] Loading states on all pages
+
+Short-term (This Month):
+  1. [SECURITY-2] Fix race conditions (switch to SQLite)
+  2. [PERF-1] Address blocking sleep calls
+  3. [CODE-2] Implement logging framework
+  4. [FEATURE-2] Error recovery UI
+  5. [INFRA-1] Set up CI/CD pipeline
+
+Medium-term (This Quarter):
+  1. [PERF-2] Migrate to SQLite database
+  2. [PERF-4] Optimize API payload sizes
+  3. [FEATURE-7] Transaction import/export
+  4. [FEATURE-8] Symbol search with autocomplete
+  5. [INFRA-2] Docker setup
+
+Long-term (Next Quarter+):
+  1. [PERF-1] Async architecture refactor
+  2. [CODE-5] TypeScript migration
+  3. [ENHANCE-3] Backtesting framework
+  4. [FEATURE-6] Portfolio analytics
+  5. [INFRA-4] Monitoring and observability
+
+================================================================================
+METRICS TO TRACK
+================================================================================
+
+Code Quality:
+  - Test coverage: Current ~10% → Target 70%+
+  - Linter warnings: Track and reduce to zero
+  - Code duplication: Track with SonarQube
+
+Performance:
+  - API response time: Current ~2-3s → Target <500ms
+  - Frontend bundle size: Current ~500KB → Target <300KB
+  - Time to interactive: Current ~2s → Target <1s
+
+Security:
+  - Known vulnerabilities: Track and fix within 7 days
+  - Security audit findings: Quarterly reviews
+
+User Experience:
+  - Page load time: Current ~2s → Target <1s
+  - Error rate: Track API errors, target <1%
+  - User feedback: Track feature requests and bugs
+
+================================================================================
+END OF TODO
+================================================================================
+
+This document should be reviewed and updated quarterly as items are completed
+and new priorities emerge. Each item should be converted to a GitHub issue
+for tracking and assignment.
+
+Generated by: Extensive Code Review Session
+Review Duration: ~30 minutes
+Files Reviewed: 25+ files (backend + frontend)
+Lines Analyzed: ~3,700 LOC
+
+Next Review: 2026-04-29 (3 months)
