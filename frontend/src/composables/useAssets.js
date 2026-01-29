@@ -1,12 +1,26 @@
+/**
+ * useAssets Composable - Centralized API for fetching and managing asset data.
+ * 
+ * This composable provides:
+ * - Fetching all watchlist assets with analysis
+ * - Fetching individual asset data
+ * - Mock data fallback when backend is unavailable
+ * - Smart cache merging when some assets fail to load
+ * - API usage statistics tracking
+ * 
+ * Used by: Home, Analyze, and Portfolio pages
+ */
 import { ref } from 'vue'
 
 // Centralized asset fetching with a mock fallback.
 export function useAssets() {
-  const assets = ref([])
-  const usingMock = ref(false)
-  const errors = ref([])
-  const usage = ref(null)
+  // Reactive state
+  const assets = ref([])  // Array of asset objects with analysis and price data
+  const usingMock = ref(false)  // Flag indicating if we're using mock data (backend unavailable)
+  const errors = ref([])  // Array of error messages from backend
+  const usage = ref(null)  // API usage statistics (Alpha quota, cache hit rate, etc.)
 
+  // Mock data used when backend is unavailable (for development/testing)
   const mockAssets = [
     {
       name: 'AAPL',
@@ -63,6 +77,21 @@ export function useAssets() {
     },
   ]
 
+  /**
+   * Fetch all assets in the watchlist with analysis.
+   * 
+   * @param {Object} options - Fetch parameters
+   * @param {string} options.interval - Time interval: '1d', '1w', '1m' (default: '1d')
+   * @param {number} options.chartPoints - Number of data points to return (default: 60)
+   * @param {string} options.outputsize - Alpha Vantage output size: 'compact' or 'full'
+   * @param {Object} options.stooqMap - Optional mapping of symbols to Stooq codes
+   * @param {string} options.mode - Fetch mode: 'daily' (use cache) or 'force' (refresh)
+   * 
+   * Behavior:
+   * - Falls back to mock data if backend is unreachable
+   * - Merges new data with existing data when errors occur (preserves working assets)
+   * - Updates usage statistics
+   */
   async function fetchAssets({
     interval = '1d',
     chartPoints = 60,
@@ -71,18 +100,24 @@ export function useAssets() {
     mode = 'daily',
   } = {}) {
     try {
+      // Build API request URL with query parameters
       const url = new URL('/api/assets', window.location.origin)
       url.searchParams.set('interval', interval)
       url.searchParams.set('chart_points', String(chartPoints))
       url.searchParams.set('outputsize', outputsize)
       url.searchParams.set('mode', mode)
       if (stooqMap) url.searchParams.set('stooq_map', JSON.stringify(stooqMap))
+      
       const res = await fetch(url)
       if (!res.ok) throw new Error('assets endpoint missing')
       const data = await res.json()
+      
       const nextAssets = data.assets || []
       errors.value = data.errors || []
       usage.value = data.usage || null
+      
+      // Smart merge: if some assets failed but we have existing data,
+      // merge new successful assets with existing ones to avoid data loss
       if (errors.value.length && assets.value.length) {
         const existingByKey = new Map(
           assets.value.map((a) => [`${a.type}:${a.symbol}`, a])
@@ -93,11 +128,32 @@ export function useAssets() {
         assets.value = nextAssets
       }
     } catch (err) {
+      // Backend unavailable - use mock data for development/testing
       usingMock.value = true
       assets.value = mockAssets
     }
   }
 
+  /**
+   * Fetch and analyze a single asset (for refresh or individual lookup).
+   * 
+   * @param {Object} options - Fetch parameters
+   * @param {string} options.symbol - Stock symbol or commodity series ID (required)
+   * @param {string} options.type - Asset type: 'stock' or 'commodity' (required)
+   * @param {string} options.interval - Time interval: '1d', '1w', '1m'
+   * @param {number} options.chartPoints - Number of data points to return
+   * @param {string} options.outputsize - Alpha Vantage output size
+   * @param {boolean} options.refresh - Force fresh data from provider (default: false)
+   * @param {string} options.mode - Fetch mode: 'daily' or 'force'
+   * @param {string} options.stooqSymbol - Optional Stooq-specific symbol
+   * 
+   * @returns {Object|null} Updated asset object or null if failed
+   * 
+   * Behavior:
+   * - Fetches single asset from backend
+   * - Updates asset in the assets array if it exists
+   * - Adds new asset to array if not present
+   */
   async function fetchAsset({
     symbol,
     type,
@@ -110,6 +166,7 @@ export function useAssets() {
   }) {
     if (!symbol || !type) return null
     try {
+      // Build API request URL
       const url = new URL('/api/asset', window.location.origin)
       url.searchParams.set('symbol', symbol)
       url.searchParams.set('type', type)
@@ -119,11 +176,14 @@ export function useAssets() {
       url.searchParams.set('mode', mode)
       if (stooqSymbol) url.searchParams.set('stooq_symbol', stooqSymbol)
       if (refresh) url.searchParams.set('refresh', '1')
+      
       const res = await fetch(url)
       if (!res.ok) throw new Error('asset endpoint missing')
       const data = await res.json()
       const updated = data.asset
       if (!updated) return null
+      
+      // Update existing asset or add new one to the array
       const idx = assets.value.findIndex((a) => a.symbol === updated.symbol && a.type === updated.type)
       if (idx >= 0) {
         assets.value.splice(idx, 1, updated)
@@ -136,5 +196,6 @@ export function useAssets() {
     }
   }
 
+  // Export reactive state and fetch functions
   return { assets, usingMock, errors, usage, fetchAssets, fetchAsset }
 }
