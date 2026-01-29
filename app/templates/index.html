@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Market Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      --ink: #0f1c2e;
+      --muted: #667085;
+      --bg: #f5f2ea;
+      --card: #ffffff;
+      --accent: #cb6d51;
+      --accent-2: #4a7c89;
+      --good: #1f8a70;
+      --bad: #b03a2e;
+      --neutral: #6c757d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 10%, #fdf8ef 0, #f5f2ea 35%, #efe8dd 100%);
+    }
+    header {
+      padding: 32px 28px 12px;
+    }
+    h1 {
+      font-family: "Libre Baskerville", serif;
+      font-weight: 700;
+      margin: 0 0 6px;
+      letter-spacing: 0.5px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+    }
+    .wrap {
+      padding: 0 28px 32px;
+      display: grid;
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 24px rgba(15, 28, 46, 0.08);
+    }
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+    .card .value {
+      font-size: 28px;
+      font-weight: 600;
+    }
+    .panel {
+      background: var(--card);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: 0 10px 24px rgba(15, 28, 46, 0.08);
+    }
+    .toolbar {
+      display: grid;
+      gap: 12px;
+    }
+    .toolbar-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 16px;
+      align-items: end;
+    }
+    .toolbar-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .toolbar-inline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .row {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 1.2fr 1fr;
+    }
+    .asset-select {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .asset-select label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    select {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #e3e6eb;
+      font-size: 14px;
+    }
+    .search-input {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #e3e6eb;
+      font-size: 14px;
+      min-width: 200px;
+    }
+    .btn {
+      border: none;
+      background: var(--accent);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn.ghost {
+      background: transparent;
+      color: var(--bad);
+      border: 1px solid rgba(176, 58, 46, 0.35);
+      padding: 6px 10px;
+      font-weight: 600;
+    }
+    .btn.secondary {
+      background: var(--accent-2);
+    }
+    .toolbar-note {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    #chart {
+      height: 260px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 8px 6px;
+      border-bottom: 1px solid #eceff3;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    th button {
+      border: none;
+      background: transparent;
+      color: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      padding: 0;
+    }
+    .sort-indicator {
+      font-size: 10px;
+      color: var(--muted);
+    }
+    .pill {
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .bullish { background: rgba(31, 138, 112, 0.15); color: var(--good); }
+    .bearish { background: rgba(176, 58, 46, 0.15); color: var(--bad); }
+    .neutral { background: rgba(108, 117, 125, 0.15); color: var(--neutral); }
+    .reasons { color: var(--muted); }
+    .disclaimer {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .errors {
+      background: #fff2f2;
+      border: 1px solid #f5c6cb;
+      color: #7a1d1d;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      .row { grid-template-columns: 1fr; }
+      .toolbar-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Personal Market Analyzer</h1>
+    <p class="subtitle">Signals for the last month, with transparent reasons. Not financial advice.</p>
+  </header>
+
+  <div class="wrap">
+    {% if errors %}
+    <div class="errors">
+      <strong>Data warnings:</strong>
+      <ul>
+        {% for e in errors %}
+        <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <section class="cards">
+      <div class="card">
+        <h3>Total Assets</h3>
+        <div class="value">{{ assets|length }}</div>
+      </div>
+      <div class="card">
+        <h3>Bullish</h3>
+        <div class="value" id="bullish-count">0</div>
+      </div>
+      <div class="card">
+        <h3>Neutral</h3>
+        <div class="value" id="neutral-count">0</div>
+      </div>
+      <div class="card">
+        <h3>Bearish</h3>
+        <div class="value" id="bearish-count">0</div>
+      </div>
+    </section>
+
+    <section class="panel toolbar">
+      <div class="toolbar-row">
+        <div class="toolbar-group">
+          <label for="global-search">Search assets</label>
+          <input id="global-search" class="search-input" type="text" placeholder="Search symbol or name..." />
+        </div>
+        <div class="toolbar-group">
+          <label for="add-input">Add to watchlist</label>
+          <div class="toolbar-inline">
+            <input id="add-input" class="search-input" type="text" placeholder="Symbol (e.g. NFLX)" />
+            <button class="btn" id="add-btn">Add</button>
+          </div>
+        </div>
+      </div>
+      <div class="toolbar-note">Use the table below to remove symbols. Changes persist in `data/watchlist.json`.</div>
+    </section>
+
+    <section class="row">
+      <div class="panel">
+        <div class="asset-select">
+          <label for="asset-select"><strong>Chart asset</strong></label>
+          <select id="asset-select"></select>
+        </div>
+        <div id="chart"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Rationale</h2>
+        <div id="rationale"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Signals & Features</h2>
+      <table>
+        <thead>
+          <tr>
+            <th><button data-key="name">Asset <span class="sort-indicator">↕</span></button></th>
+            <th><button data-key="type">Type <span class="sort-indicator">↕</span></button></th>
+            <th><button data-key="label">Signal <span class="sort-indicator">↕</span></button></th>
+            <th><button data-key="ret_1m">1M Return <span class="sort-indicator">↕</span></button></th>
+            <th><button data-key="vol_1m">1M Vol <span class="sort-indicator">↕</span></button></th>
+            <th><button data-key="drawdown_1m">Drawdown <span class="sort-indicator">↕</span></button></th>
+            <th>Reasons</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="assets-body"></tbody>
+      </table>
+      <p class="disclaimer">
+        This dashboard provides signal labels based on simple technical rules for the last ~21 trading days.
+        It is for personal experimentation only and does not provide investment advice.
+      </p>
+    </section>
+  </div>
+
+  <script>
+    const assets = {{ assets_json | safe }};
+    const chartRoot = document.getElementById("chart");
+    const chart = LightweightCharts.createChart(chartRoot, {
+      layout: { background: { color: "#ffffff" }, textColor: "#0f1c2e" },
+      grid: { vertLines: { color: "#edf0f4" }, horzLines: { color: "#edf0f4" } },
+      timeScale: { timeVisible: true, secondsVisible: false },
+      rightPriceScale: { borderColor: "#e3e6eb" },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    });
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: "#1f8a70",
+      downColor: "#b03a2e",
+      borderDownColor: "#b03a2e",
+      borderUpColor: "#1f8a70",
+      wickDownColor: "#b03a2e",
+      wickUpColor: "#1f8a70",
+    });
+    const lineSeries = chart.addLineSeries({
+      color: "#cb6d51",
+      lineWidth: 2,
+    });
+
+    const counts = assets.reduce((acc, a) => {
+      acc[a.label] = (acc[a.label] || 0) + 1;
+      return acc;
+    }, {});
+
+    document.getElementById("bullish-count").textContent = counts.bullish || 0;
+    document.getElementById("neutral-count").textContent = counts.neutral || 0;
+    document.getElementById("bearish-count").textContent = counts.bearish || 0;
+
+    const select = document.getElementById("asset-select");
+    const searchInput = document.getElementById("global-search");
+    const addInput = document.getElementById("add-input");
+    const addBtn = document.getElementById("add-btn");
+    const tableBody = document.getElementById("assets-body");
+    const sortButtons = document.querySelectorAll("th button[data-key]");
+
+    let sortState = { key: "name", dir: "asc" };
+    let currentFilter = "";
+
+    function renderOptions(filter = "") {
+      select.innerHTML = "";
+      const normalized = filter.trim().toLowerCase();
+      let hasSelection = false;
+      assets.forEach((a, idx) => {
+        const text = `${a.name} (${a.type})`;
+        if (normalized && !text.toLowerCase().includes(normalized) && !a.symbol.toLowerCase().includes(normalized)) {
+          return;
+        }
+        const opt = document.createElement("option");
+        opt.value = idx;
+        opt.textContent = text;
+        select.appendChild(opt);
+        if (!hasSelection) {
+          hasSelection = true;
+          select.value = idx;
+          renderAsset(idx);
+        }
+      });
+    }
+
+    async function addSymbol(symbol) {
+      const res = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol }),
+      });
+      await res.json();
+      location.reload();
+    }
+
+    async function removeSymbol(symbol) {
+      const res = await fetch(`/api/watchlist/${symbol}`, { method: "DELETE" });
+      await res.json();
+      location.reload();
+    }
+
+    function renderAsset(idx) {
+      const asset = assets[idx];
+      if (asset.ohlc) {
+        candleSeries.setData(asset.ohlc);
+        lineSeries.setData([]);
+      } else {
+        const lineData = asset.dates.map((d, i) => ({ time: d, value: asset.series[i] }));
+        lineSeries.setData(lineData);
+        candleSeries.setData([]);
+      }
+      chart.timeScale().fitContent();
+
+      const rationale = document.getElementById("rationale");
+      const reasons = asset.reasons.length ? asset.reasons : ["No strong signal based on current rules."];
+      rationale.innerHTML = `
+        <p><strong>${asset.name}</strong> is <span class="pill ${asset.label}">${asset.label}</span></p>
+        <ul>
+          ${reasons.map(r => `<li>${r}</li>`).join("")}
+        </ul>
+        <p class="disclaimer">Score: ${asset.score}</p>
+      `;
+    }
+
+    select.addEventListener("change", (e) => renderAsset(e.target.value));
+    searchInput.addEventListener("input", (e) => {
+      currentFilter = e.target.value;
+      renderOptions(currentFilter);
+      renderTable();
+    });
+    addBtn.addEventListener("click", () => {
+      if (addInput.value.trim()) addSymbol(addInput.value.trim());
+    });
+
+    function getSortValue(asset, key) {
+      if (key === "name") return asset.name;
+      if (key === "type") return asset.type;
+      if (key === "label") return asset.label;
+      if (key === "ret_1m") return asset.features.ret_1m;
+      if (key === "vol_1m") return asset.features.vol_1m;
+      if (key === "drawdown_1m") return asset.features.drawdown_1m;
+      return "";
+    }
+
+    function renderTable() {
+      const filter = currentFilter.trim().toLowerCase();
+      const filtered = assets.filter((a) => {
+        const text = `${a.name} ${a.symbol} ${a.type}`.toLowerCase();
+        return !filter || text.includes(filter);
+      });
+      filtered.sort((a, b) => {
+        const av = getSortValue(a, sortState.key);
+        const bv = getSortValue(b, sortState.key);
+        if (typeof av === "number" && typeof bv === "number") {
+          return sortState.dir === "asc" ? av - bv : bv - av;
+        }
+        return sortState.dir === "asc"
+          ? String(av).localeCompare(String(bv))
+          : String(bv).localeCompare(String(av));
+      });
+
+      tableBody.innerHTML = filtered.map((a) => {
+        const reasons = a.reasons.length ? a.reasons.join("; ") : "No strong signal";
+        const action = a.type === "stock"
+          ? `<button class="btn ghost" data-action="remove" data-symbol="${a.symbol}">Remove</button>`
+          : "";
+        return `
+          <tr>
+            <td>${a.name}</td>
+            <td>${a.type}</td>
+            <td><span class="pill ${a.label}">${a.label}</span></td>
+            <td>${(a.features.ret_1m * 100).toFixed(2)}%</td>
+            <td>${(a.features.vol_1m * 100).toFixed(2)}%</td>
+            <td>${(a.features.drawdown_1m * 100).toFixed(2)}%</td>
+            <td class="reasons">${reasons}</td>
+            <td>${action}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    tableBody.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target && target.dataset && target.dataset.action === "remove") {
+        removeSymbol(target.dataset.symbol);
+      }
+    });
+
+    sortButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const key = btn.dataset.key;
+        if (sortState.key === key) {
+          sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+        } else {
+          sortState.key = key;
+          sortState.dir = "asc";
+        }
+        renderTable();
+      });
+    });
+
+    renderOptions();
+    if (assets.length) renderAsset(0);
+    renderTable();
+  </script>
+</body>
+</html>
